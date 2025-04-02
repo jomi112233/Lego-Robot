@@ -1,2 +1,52 @@
-<?xml version="1.0" encoding="UTF-8">
+<?xml version="1.0" encoding="UTF-8"?>
 <project name="LineFollower" default="upload">
+    <property file="build.properties"/>
+
+    <path id="libraries">
+        <fileset dir="${ev3.home}/lib/ev3">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+
+    <target name="clean" description="delete old files">
+        <delete dir="bin"/>
+    </target>
+
+    <target name="compile" description="compile the source">
+        <mkdir dir="bin"/>
+        <javac srcdir="src" destdir="bin" includeantruntime="false" debug="true">
+            <classpath refid="libraries"/>
+        </javac>
+    </target>
+
+    <target name="jar" depends="compile">
+        <jar destfile="LineFollower.jar" basedir="bin">
+            <manifest>
+                <attribute name="Main-Class" value="${main.class}"/>
+                <attribute name="Class-Path" value="${class.path}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="upload" depends="jar">
+        <property name="ev3.control" location="${ev3.home}/bin/ev3control.bat"/>
+        <exec executable="cmd" failonerror="true">
+            <arg value="/c"/>
+            <arg value="&quot;${ev3.control}&quot;"/>
+            <arg value="upload"/>
+            <arg value="LineFollower.jar"/>
+        </exec>
+    </target>
+</project>
+
+<target name="run" depends="upload">
+    <property name="ev3.control" location="${ev3.home}/bin/ev3control.bat"/>
+    <exec executable="cmd" failonerror="true">
+        <arg value="/c"/>
+        <arg value="&quot;${ev3.control}&quot;"/>
+        <arg value="run"/>
+        <arg value="-jar"/>
+        <arg value="LineFollower.jar"/>
+    </exec>
+</target>
+</project>
