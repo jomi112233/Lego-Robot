@@ -37,7 +37,6 @@
             <arg value="LineFollower.jar"/>
         </exec>
     </target>
-</project>
 
 <target name="run" depends="upload">
     <property name="ev3.control" location="${ev3.home}/bin/ev3control.bat"/>
