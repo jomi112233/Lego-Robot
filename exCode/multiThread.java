@@ -7,7 +7,7 @@ import lejos.hardware.Button;
 import lejos.robotics.SampleProvider;
 import lejos.utility.Delay;
 
-public class LineFollower {
+public class multiThread {
 
     public static void main(String[] args) {
         UltraThread ultraThread = new UltraThread(); // Shared instance

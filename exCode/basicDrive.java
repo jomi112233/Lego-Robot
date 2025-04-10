@@ -3,8 +3,8 @@ import lejos.hardware.port.SensorPort;
 import lejos.hardware.lcd.LCD;
 import lejos.hardware.motor.Motor;
 import lejos.hardware.Button;
-import lejos.robotics.SampleProvider;   // allows the sensor to return the samples or data
-                                        // e.g., for getting distance data from sonic sensor etc
+import lejos.robotics.SampleProvider;
+                                        
 import lejos.utility.Delay;
 
 public class basicDrive {
