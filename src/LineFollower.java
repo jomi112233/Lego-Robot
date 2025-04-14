@@ -10,13 +10,15 @@ import lejos.utility.Delay;
 public class LineFollower {
 
     public static void main(String[] args) {
-        UltraThread ultraThread = new UltraThread(); // Shared instance
+        UltraThread ultraThread = new UltraThread();
 
-        Thread motorThread = new Thread(new MotorThread(ultraThread)); // Pass it to MotorThread
+        Thread motorThread = new Thread(new MotorThread(ultraThread)); 
         Thread ultraSensorThread = new Thread(ultraThread);
+        Thread LightThread = new Thread();
 
         ultraSensorThread.start();
         motorThread.start();
+        LightThread.start();
     }
 }
 
@@ -29,7 +31,7 @@ class MotorThread implements Runnable  {
 
     public void run() {
         while (true) {
-            float distance = ultraThread.getDistance(); // safe getter
+            float distance = ultraThread.getDistance();
             if (distance <= 0.5f) {
                 Motor.A.rotate(-360, true);
                 Motor.B.rotate(360);
@@ -48,8 +50,39 @@ class MotorThread implements Runnable  {
     }
 }
 
+class LightThread implements Runnable {
+    private float LightValue = Float.MAX_VALUE;
+    
+    public float GetLight(){
+        return LightValue;
+    }
+
+    public void run(){
+        EV3ColorSensor colorSensor = new EV3ColorSensor(SensorPort.S2);
+        SampleProvider Light = colorSensor.getAmbientMode();
+
+        float[] LightSample = new float[Light.sampleSize()];
+
+        while (true) {
+            Light.fetchSample(LightSample, 0);
+
+            
+            LCD.drawString("Light: "  + (int)(LightSample[0]), 4, 0);
+
+            try 
+            {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+}
+
+
 class UltraThread implements Runnable  {
-    private float distance = Float.MAX_VALUE; // Default large distance
+    private float distance = Float.MAX_VALUE;
 
     public float getDistance() {
         return distance;
@@ -62,10 +95,10 @@ class UltraThread implements Runnable  {
 
         while (true) {
             distanceMode.fetchSample(sample, 0);
-            distance = sample[0]; // Update shared variable
+            distance = sample[0];
 
             //LCD.clear();
-            //LCD.drawString("Distance: " + distance, 0, 0);
+            LCD.drawString("Distance: " + distance, 0, 0);
 
             try {
                 Thread.sleep(40);
