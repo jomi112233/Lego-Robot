@@ -20,23 +20,15 @@ public class LineFollower {
     private static float targetValue = 0.5f; // Default target value, will be calibrated
 
     public static void main(String[] args) {
-        LCD.drawString("Press any button", 0, 0);
-        LCD.drawString("to start", 0, 1);
-        Button.waitForAnyPress();
-        LCD.clear();
+        UltraThread ultraThread = new UltraThread(); // Shared instance
 
-        // Create shared instances
-        UltraThread ultraThread = new UltraThread();
-        LineThread lineThread = new LineThread();
-
-        // Start threads
+        Thread motorThread = new Thread(new MotorThread(ultraThread)); // Pass it to MotorThread
         Thread ultraSensorThread = new Thread(ultraThread);
-        Thread lineSensorThread = new Thread(lineThread);
-        Thread motorThread = new Thread(new MotorThread(ultraThread, lineThread));
 
         ultraSensorThread.start();
         lineSensorThread.start();
         motorThread.start();
+        LightThread.start();
     }
 }
 
@@ -52,13 +44,9 @@ class MotorThread implements Runnable {
     }
 
     public void run() {
-        while (!Button.ESCAPE.isDown()) {
-            float distance = ultraThread.getDistance();
-            float currentValue = lineThread.getLineValue();
-            float targetValue = lineThread.getTargetValue();
-
-            // Check for obstacles
-            if (distance <= LineFollower.OBSTACLE_DISTANCE) {
+        while (true) {
+            float distance = ultraThread.getDistance(); // safe getter
+            if (distance <= 0.5f) {
                 Motor.A.rotate(-360, true);
                 Motor.B.rotate(360);
                 Delay.msDelay(1000);
@@ -103,8 +91,39 @@ class MotorThread implements Runnable {
     }
 }
 
-class UltraThread implements Runnable {
-    private float distance = Float.MAX_VALUE;
+class LightThread implements Runnable {
+    private float LightValue = Float.MAX_VALUE;
+    
+    public float GetLight(){
+        return LightValue;
+    }
+
+    public void run(){
+        EV3ColorSensor colorSensor = new EV3ColorSensor(SensorPort.S2);
+        SampleProvider Light = colorSensor.getAmbientMode();
+
+        float[] LightSample = new float[Light.sampleSize()];
+
+        while (true) {
+            Light.fetchSample(LightSample, 0);
+
+            
+            LCD.drawString("Light: "  + (int)(LightSample[0]), 4, 0);
+
+            try 
+            {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+}
+
+
+class UltraThread implements Runnable  {
+    private float distance = Float.MAX_VALUE; // Default large distance
 
     public float getDistance() {
         return distance;
@@ -117,54 +136,16 @@ class UltraThread implements Runnable {
 
         while (!Button.ESCAPE.isDown()) {
             distanceMode.fetchSample(sample, 0);
-            distance = sample[0];
-            Delay.msDelay(40);
-        }
-        ultrasonicSensor.close();
-    }
-}
+            distance = sample[0]; // Update shared variable
 
-class LineThread implements Runnable {
-    private float currentValue = 0.5f;
-    private float targetValue = 0.5f;
-    private boolean isCalibrated = false;
+            //LCD.clear();
+            //LCD.drawString("Distance: " + distance, 0, 0);
 
-    public float getLineValue() {
-        return currentValue;
-    }
-
-    public float getTargetValue() {
-        return targetValue;
-    }
-
-    public void run() {
-        EV3ColorSensor colorSensor = new EV3ColorSensor(SensorPort.S2);
-        SampleProvider colorProvider = colorSensor.getRedMode();
-        float[] colorSample = new float[colorProvider.sampleSize()];
-
-        // Calibration
-        LCD.drawString("Calibrating...", 0, 0);
-        LCD.drawString("Place on line", 0, 1);
-        Button.waitForAnyPress();
-        colorProvider.fetchSample(colorSample, 0);
-        float lineValue = colorSample[0];
-
-        LCD.drawString("Place off line", 0, 0);
-        Button.waitForAnyPress();
-        colorProvider.fetchSample(colorSample, 0);
-        float backgroundValue = colorSample[0];
-
-        targetValue = (lineValue + backgroundValue) / 2;
-        isCalibrated = true;
-        LCD.clear();
-        LCD.drawString("Following line", 0, 0);
-
-        // Main line following loop
-        while (!Button.ESCAPE.isDown()) {
-            colorProvider.fetchSample(colorSample, 0);
-            currentValue = colorSample[0];
-            Delay.msDelay(10);
-        }
-        colorSensor.close();
+            try {
+                Thread.sleep(40);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }     
     }
 }
