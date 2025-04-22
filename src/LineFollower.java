@@ -1,19 +1,23 @@
 import lejos.hardware.motor.Motor;
+import lejos.hardware.Button;
+import lejos.hardware.lcd.LCD;
+import lejos.hardware.port.SensorPort;
 import lejos.hardware.sensor.EV3ColorSensor;
 import lejos.hardware.sensor.EV3UltrasonicSensor;
-import lejos.hardware.port.SensorPort;
-import lejos.hardware.lcd.LCD;
-import lejos.hardware.Button;
 import lejos.robotics.SampleProvider;
 import lejos.utility.Delay;
 
 public class LineFollower {
-    public static final float KP = 500.0f;  // Reduced from 1000 for smoother control
-    public static final float KI = 0.0f;
-    public static final float KD = 50.0f;   // Reduced from 100 for smoother control
-    public static final int BASE_SPEED = 150;
-    public static final int MAX_SPEED = 300;
-    public static final float OBSTACLE_DISTANCE = 0.5f;
+    private static final float KP = 1000.0f;  // Proportional gain for line-following
+    private static final float KI = 0.0f;    // Integral gain (currently unused)
+    private static final float KD = 100.0f;  // Derivative gain for line-following
+    private static final int BASE_SPEED = 225;
+    private static final int MAX_SPEED = 300;
+    private static final float OBSTACLE_DISTANCE = 0.5f; // Minimum distance for obstacle detection
+
+    private static float integral = 0;
+    private static float lastError = 0;
+    private static float distance = Float.MAX_VALUE;
 
     public static void main(String[] args) {
         LCD.drawString("Press any button", 0, 0);
@@ -21,117 +25,98 @@ public class LineFollower {
         Button.waitForAnyPress();
         LCD.clear();
 
-        UltraThread ultraThread = new UltraThread();
-        LightThread lightThread = new LightThread();
+        try {
+            // Initialize the sensors
+            EV3ColorSensor colorSensor = new EV3ColorSensor(SensorPort.S2);
+            EV3UltrasonicSensor ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
+            SampleProvider colorProvider = colorSensor.getRedMode();
+            SampleProvider distanceMode = ultrasonicSensor.getDistanceMode();
+            float[] colorSample = new float[colorProvider.sampleSize()];
+            float[] distanceSample = new float[distanceMode.sampleSize()];
 
-        Thread motorThread = new Thread(new MotorThread(ultraThread, lightThread));
-        Thread ultraSensorThread = new Thread(ultraThread);
-        Thread lightSensorThread = new Thread(lightThread);
+            // Calibration phase
+            LCD.drawString("Calibrating...", 0, 0);
+            LCD.drawString("Place on line", 0, 1);
+            Button.waitForAnyPress();
+            colorProvider.fetchSample(colorSample, 0);
+            float lineValue = colorSample[0];
 
-        ultraSensorThread.start();
-        lightSensorThread.start();
-        motorThread.start();
-    }
-}
+            LCD.drawString("Place off line", 0, 0);
+            Button.waitForAnyPress();
+            colorProvider.fetchSample(colorSample, 0);
+            float backgroundValue = colorSample[0];
 
-class MotorThread implements Runnable {
-    private UltraThread ultraThread;
-    private LightThread lightThread;
-    private float integral = 0;
-    private float lastError = 0;
-    private float targetValue = 0.5f;
+            float targetValue = (lineValue + backgroundValue) / 2;
 
-    public MotorThread(UltraThread ultraThread, LightThread lightThread) {
-        this.ultraThread = ultraThread;
-        this.lightThread = lightThread;
-    }
+            LCD.clear();
+            LCD.drawString("Following line", 0, 0);
 
-    public void run() {
-        while (!Button.ESCAPE.isDown()) {
-            float distance = ultraThread.getDistance();
-            float currentValue = lightThread.getLight();
+            while (!Button.ESCAPE.isDown()) {
+                // Update distance reading from ultrasonic sensor
+                distanceMode.fetchSample(distanceSample, 0);
+                distance = distanceSample[0];
 
-            if (distance <= LineFollower.OBSTACLE_DISTANCE) {
-                Motor.A.rotate(-360, true);
-                Motor.B.rotate(360);
-                Delay.msDelay(1000);
-                continue;
+                // Obstacle avoidance logic
+                if (distance <= OBSTACLE_DISTANCE) {
+                    // If an obstacle is detected, rotate to avoid it
+                    Motor.A.rotate(-360, true);  // Rotate Motor A backward
+                    Motor.B.rotate(360);         // Rotate Motor B forward
+                    Delay.msDelay(1000);         // Wait for a moment
+                    continue;                    // Skip the rest of the loop and check again
+                }
+
+                // Line following logic
+                colorProvider.fetchSample(colorSample, 0);
+                float currentValue = colorSample[0];
+                float error = targetValue - currentValue;
+
+                // PID control for smoother line-following
+                integral = integral * 0.5f + error;
+                float derivative = error - lastError;
+                float correction = KP * error + KI * integral + KD * derivative;
+
+                int speedA = (int)(BASE_SPEED + correction);
+                int speedB = (int)(BASE_SPEED - correction);
+
+                speedA = Math.min(Math.max(speedA, -MAX_SPEED), MAX_SPEED);
+                speedB = Math.min(Math.max(speedB, -MAX_SPEED), MAX_SPEED);
+
+                // Set motor speeds based on calculated correction
+                Motor.A.setSpeed(Math.abs(speedA));
+                Motor.B.setSpeed(Math.abs(speedB));
+
+                if (speedA > 0) {
+                    Motor.A.forward();
+                } else {
+                    Motor.A.backward();
+                }
+
+                if (speedB > 0) {
+                    Motor.B.forward();
+                } else {
+                    Motor.B.backward();
+                }
+
+                // Update last error for derivative calculation in next loop
+                lastError = error;
+                Delay.msDelay(10);  // Short delay to allow motors to adjust
             }
 
-            float error = targetValue - currentValue;
-            integral = integral * 0.5f + error;
-            float derivative = error - lastError;
-            float correction = LineFollower.KP * error + LineFollower.KI * integral + LineFollower.KD * derivative;
+            // Stop motors and close sensors when ESCAPE button is pressed
+            Motor.A.stop();
+            Motor.B.stop();
+            colorSensor.close();
+            ultrasonicSensor.close();
 
-            int speedA = (int)(LineFollower.BASE_SPEED + correction);
-            int speedB = (int)(LineFollower.BASE_SPEED - correction);
+            LCD.clear();
+            LCD.drawString("Done!", 0, 0);
 
-            speedA = Math.min(Math.max(speedA, -LineFollower.MAX_SPEED), LineFollower.MAX_SPEED);
-            speedB = Math.min(Math.max(speedB, -LineFollower.MAX_SPEED), LineFollower.MAX_SPEED);
-
-            Motor.A.setSpeed(Math.abs(speedA));
-            Motor.B.setSpeed(Math.abs(speedB));
-
-            if (speedA > 0) {
-                Motor.A.forward();
-            } else {
-                Motor.A.backward();
-            }
-
-            if (speedB > 0) {
-                Motor.B.forward();
-            } else {
-                Motor.B.backward();
-            }
-
-            lastError = error;
-            Delay.msDelay(10);
+        } catch (Exception e) {
+            LCD.clear();
+            LCD.drawString("Error", 0, 0);
+            LCD.drawString(e.getMessage(), 0, 1);
         }
 
-        Motor.A.stop();
-        Motor.B.stop();
-    }
-}
-
-class LightThread implements Runnable {
-    private float lightValue = Float.MAX_VALUE;
-    
-    public float getLight() {
-        return lightValue;
-    }
-
-    public void run() {
-        EV3ColorSensor colorSensor = new EV3ColorSensor(SensorPort.S2);
-        SampleProvider light = colorSensor.getAmbientMode();
-        float[] lightSample = new float[light.sampleSize()];
-
-        while (!Button.ESCAPE.isDown()) {
-            light.fetchSample(lightSample, 0);
-            lightValue = lightSample[0];
-            LCD.drawString("Light: " + (int)(lightValue), 4, 0);
-            Delay.msDelay(100);
-        }
-        colorSensor.close();
-    }
-}
-
-class UltraThread implements Runnable {
-    private float distance = Float.MAX_VALUE;
-
-    public float getDistance() {
-        return distance;
-    }
-
-    public void run() {
-        EV3UltrasonicSensor ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
-        SampleProvider distanceMode = ultrasonicSensor.getDistanceMode();
-        float[] sample = new float[distanceMode.sampleSize()];
-
-        while (!Button.ESCAPE.isDown()) {
-            distanceMode.fetchSample(sample, 0);
-            distance = sample[0];
-            Delay.msDelay(40);
-        }
-        ultrasonicSensor.close();
+        Button.waitForAnyPress();
     }
 }
