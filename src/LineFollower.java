@@ -1,9 +1,9 @@
 import lejos.hardware.motor.Motor;
-import lejos.hardware.Button;
-import lejos.hardware.lcd.LCD;
-import lejos.hardware.port.SensorPort;
 import lejos.hardware.sensor.EV3ColorSensor;
 import lejos.hardware.sensor.EV3UltrasonicSensor;
+import lejos.hardware.port.SensorPort;
+import lejos.hardware.lcd.LCD;
+import lejos.hardware.Button;
 import lejos.robotics.SampleProvider;
 import lejos.utility.Delay;
 
@@ -11,9 +11,8 @@ public class LineFollower {
     private static final float KP = 1000.0f;  // Proportional gain for line-following
     private static final float KI = 0.0f;    // Integral gain (currently unused)
     private static final float KD = 100.0f;  // Derivative gain for line-following
-    private static final int BASE_SPEED = 225;
+    private static final int BASE_SPEED = 250;
     private static final int MAX_SPEED = 300;
-    private static final float OBSTACLE_DISTANCE = 0.5f; // Minimum distance for obstacle detection
 
     private static float integral = 0;
     private static float lastError = 0;
@@ -25,98 +24,102 @@ public class LineFollower {
         Button.waitForAnyPress();
         LCD.clear();
 
-        try {
-            // Initialize the sensors
-            EV3ColorSensor colorSensor = new EV3ColorSensor(SensorPort.S2);
-            EV3UltrasonicSensor ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
-            SampleProvider colorProvider = colorSensor.getRedMode();
-            SampleProvider distanceMode = ultrasonicSensor.getDistanceMode();
-            float[] colorSample = new float[colorProvider.sampleSize()];
-            float[] distanceSample = new float[distanceMode.sampleSize()];
+        UltraThread ultraThread = new UltraThread(); // Shared instance for obstacle detection
 
-            // Calibration phase
-            LCD.drawString("Calibrating...", 0, 0);
-            LCD.drawString("Place on line", 0, 1);
-            Button.waitForAnyPress();
-            colorProvider.fetchSample(colorSample, 0);
-            float lineValue = colorSample[0];
+        // Pass OBSTACLE_DISTANCE to the MotorThread and create a Thread object
+        Thread motorThread = new Thread(new MotorThread(ultraThread)); // Pass it to MotorThread
+        Thread motorThreadWrapper = new Thread(motorThread); // Wrap MotorThread in a Thread object
+        Thread ultraSensorThread = new Thread(ultraThread);
 
-            LCD.drawString("Place off line", 0, 0);
-            Button.waitForAnyPress();
-            colorProvider.fetchSample(colorSample, 0);
-            float backgroundValue = colorSample[0];
+        // Start the threads
+        ultraSensorThread.start();
+        motorThreadWrapper.start(); // Start the motor thread wrapper
+    }
+}
 
-            float targetValue = (lineValue + backgroundValue) / 2;
+class MotorThread implements Runnable {
+    private UltraThread ultraThread;
+    private int turncounter = 0;
+    private int forwardcounter = 0;
 
-            LCD.clear();
-            LCD.drawString("Following line", 0, 0);
+    public MotorThread(UltraThread ultraThread) {
+        this.ultraThread = ultraThread;
+    }
 
-            while (!Button.ESCAPE.isDown()) {
-                // Update distance reading from ultrasonic sensor
-                distanceMode.fetchSample(distanceSample, 0);
-                distance = distanceSample[0];
+    public void run() {
+        while (true) {
+            float distance = ultraThread.getDistance(); // Get the current distance from the sensor
 
-                // Obstacle avoidance logic
-                if (distance <= OBSTACLE_DISTANCE) {
-                    // If an obstacle is detected, rotate to avoid it
-                    Motor.A.rotate(-360, true);  // Rotate Motor A backward
-                    Motor.B.rotate(360);         // Rotate Motor B forward
-                    Delay.msDelay(1000);         // Wait for a moment
-                    continue;                    // Skip the rest of the loop and check again
+            // Drive forward by default
+            Motor.A.forward();
+            Motor.B.forward();
+
+            if (distance <= 1.0f) { // Adjusted distance threshold
+                Motor.A.rotate(-180, true);
+                Motor.B.rotate(180);
+                turncounter++; // Increment turn counter
+
+                try {
+                    Thread.sleep(100); // Pause briefly after rotating
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
 
-                // Line following logic
-                colorProvider.fetchSample(colorSample, 0);
-                float currentValue = colorSample[0];
-                float error = targetValue - currentValue;
+                // Check if the path is clear again
+                if (ultraThread.getDistance() >= 1.0f) {
+                    // Move forward and straighten the robot
+                    Motor.A.rotate(500, true);
+                    Motor.B.rotate(500);
+                    Motor.A.rotate(180, true);
+                    Motor.B.rotate(-180);
+                    forwardcounter++; // Increment forward counter
 
-                // PID control for smoother line-following
-                integral = integral * 0.5f + error;
-                float derivative = error - lastError;
-                float correction = KP * error + KI * integral + KD * derivative;
+                    // Return to the original path
+                    while (turncounter > 0 || forwardcounter > 0) {
+                        if (forwardcounter > 0) {
+                            // Reverse one forward movement
+                            Motor.A.rotate(-500, true);
+                            Motor.B.rotate(-500);
+                            forwardcounter--;
+                        }
 
-                int speedA = (int)(BASE_SPEED + correction);
-                int speedB = (int)(BASE_SPEED - correction);
-
-                speedA = Math.min(Math.max(speedA, -MAX_SPEED), MAX_SPEED);
-                speedB = Math.min(Math.max(speedB, -MAX_SPEED), MAX_SPEED);
-
-                // Set motor speeds based on calculated correction
-                Motor.A.setSpeed(Math.abs(speedA));
-                Motor.B.setSpeed(Math.abs(speedB));
-
-                if (speedA > 0) {
-                    Motor.A.forward();
-                } else {
-                    Motor.A.backward();
+                        if (turncounter > 0) {
+                            // Reverse one turn
+                            Motor.A.rotate(180, true);
+                            Motor.B.rotate(-180);
+                            turncounter--;
+                        }
+                    }
                 }
-
-                if (speedB > 0) {
-                    Motor.B.forward();
-                } else {
-                    Motor.B.backward();
-                }
-
-                // Update last error for derivative calculation in next loop
-                lastError = error;
-                Delay.msDelay(10);  // Short delay to allow motors to adjust
             }
-
-            // Stop motors and close sensors when ESCAPE button is pressed
-            Motor.A.stop();
-            Motor.B.stop();
-            colorSensor.close();
-            ultrasonicSensor.close();
-
-            LCD.clear();
-            LCD.drawString("Done!", 0, 0);
-
-        } catch (Exception e) {
-            LCD.clear();
-            LCD.drawString("Error", 0, 0);
-            LCD.drawString(e.getMessage(), 0, 1);
         }
+    }
+}
 
-        Button.waitForAnyPress();
+class UltraThread implements Runnable {
+    private float distance = Float.MAX_VALUE;
+
+    public float getDistance() {
+        return distance;
+    }
+
+    public void run() {
+        EV3UltrasonicSensor ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
+        SampleProvider distanceMode = ultrasonicSensor.getDistanceMode();
+        float[] sample = new float[distanceMode.sampleSize()];
+
+        while (true) {
+            distanceMode.fetchSample(sample, 0);
+            distance = sample[0]; // Update shared variable
+
+            //LCD.clear();
+            //LCD.drawString("Distance: " + distance, 0, 0);
+
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
