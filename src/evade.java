@@ -32,10 +32,6 @@ class MotorThread implements Runnable {
         while (true) {
             float distance = ultraThread.getDistance(); // Get the current distance from the sensor
 
-            // Drive forward by default
-            Motor.A.forward();
-            Motor.B.forward();
-
             if (distance <= 0.5f) { // Obstacle detected
                 // Turn right
                 Motor.A.rotate(-180, true); // Rotate right
