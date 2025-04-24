@@ -19,11 +19,10 @@ public class evade {
     }
 }
 
-class MotorThread implements Runnable  {
+class MotorThread implements Runnable {
     private UltraThread ultraThread;
-    private int turncounter = 0;
-    private int forwardcounter = 0;
-
+    private int turnCounter = 0; // Tracks how many right turns were made
+    private int forwardCounter = 0; // Tracks how many forward movements were made
 
     public MotorThread(UltraThread ultraThread) {
         this.ultraThread = ultraThread;
@@ -37,46 +36,54 @@ class MotorThread implements Runnable  {
             Motor.A.forward();
             Motor.B.forward();
 
-            if (distance <= 0.5f) {
-                // Detected an obstacle, rotate to avoid it
-                Motor.A.rotate(-180, true);
+            if (distance <= 0.5f) { // Obstacle detected
+                // Turn right
+                Motor.A.rotate(-180, true); // Rotate right
                 Motor.B.rotate(180);
-                turncounter++; // Increment turn counter
+                turnCounter++; // Increment turn counter
+
+                // Move forward a small distance
+                Motor.A.rotate(500, true);
+                Motor.B.rotate(500);
+                forwardCounter++; // Increment forward counter
 
                 try {
-                    Thread.sleep(100); // Pause briefly after rotating
+                    Thread.sleep(100); // Pause briefly
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
 
                 // Check if the path is clear again
                 if (ultraThread.getDistance() >= 0.5f) {
-                    // Move forward and straighten the robot
-                    Motor.A.rotate(500, true);
-                    Motor.B.rotate(500);
+                    // Turn back forward to check if the obstacle is still there
                     Motor.A.rotate(180, true);
                     Motor.B.rotate(-180);
-                    forwardcounter++; // Increment forward counter
 
-                    // Return to the original path
-                    while (turncounter > 0 || forwardcounter > 0) {
-                        if (forwardcounter > 0) {
-                            // Reverse one forward movement
-                            Motor.A.rotate(-500, true);
-                            Motor.B.rotate(-500);
-                            forwardcounter--;
-                        }
-
-                        if (turncounter > 0) {
-                            // Reverse one turn
-                            Motor.A.rotate(180, true);
-                            Motor.B.rotate(-180);
-                            turncounter--;
-                        }
+                    if (ultraThread.getDistance() >= 0.5f) {
+                        // Path is clear, return to the original path
+                        returnToOriginalPath();
                     }
                 }
             }
         }
+    }
+
+    private void returnToOriginalPath() {
+        // Reverse the forward movements
+        for (int i = 0; i < forwardCounter; i++) {
+            Motor.A.rotate(-500, true);
+            Motor.B.rotate(-500);
+        }
+
+        // Reverse the right turns
+        for (int i = 0; i < turnCounter; i++) {
+            Motor.A.rotate(180, true);
+            Motor.B.rotate(-180);
+        }
+
+        // Reset counters after returning to the original path
+        turnCounter = 0;
+        forwardCounter = 0;
     }
 }
 
