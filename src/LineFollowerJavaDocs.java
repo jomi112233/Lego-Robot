@@ -9,6 +9,10 @@ import lejos.robotics.SampleProvider;
 
 
 /**
+ * @author Mico Jokitalo obstacle avoidance
+ * @author Samuel Rooke basic Line following code
+ * @author Aapo Eskola MultiThreading
+ * 
  * Main Class that starts the robot
  * 
  * starts lightThread and ultraThread and waits until they are ready
@@ -58,9 +62,7 @@ class calculator implements Runnable{
     private static final float KD = 75.0f;
     //motor tuning
     private static final int BASE_SPEED = 200;
-
     private static final int MAX_SPEED = 300;
-
     private static final float OBSTACLE_DISTANCE = 0.3f;
     
     private static float integral = 0;
@@ -73,7 +75,7 @@ class calculator implements Runnable{
     private int TrueSpeedB;
 
     private int stepCounter = 0;
-    //avoidance settings
+    //avoidance parameters
     private int angleA = 0;
     private int driveDistance = 0;
     private int turnAngle = 0;
@@ -350,20 +352,28 @@ class Motors implements Runnable {
 }
 
 /**
- * 
+ * reads distance form ultra sonic sensor
  */
 class UltraSensor implements Runnable {
     private float distance = Float.MAX_VALUE;
     private volatile boolean ready = false;
-
+    /**
+     * 
+     * @return latest distanse from ultra sonic sensor
+     */
     public float getDistance(){
         return distance;
     }
-
+    /**
+     * 
+     * @return true if ultra sonic sensor is ready
+     */
     public boolean isReady(){
         return ready;
     }
-
+    /**
+     * main loop for ultra sonic senor
+     */
     public void run(){
         EV3UltrasonicSensor ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
         SampleProvider distanceMode = ultrasonicSensor.getDistanceMode();
