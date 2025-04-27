@@ -273,6 +273,7 @@ class UltraSensor implements Runnable {
 class LightSensor implements Runnable {
     private float light = Float.MAX_VALUE;
     private volatile boolean ready = false;
+    private volatile boolean onLine = false;
 
     private float lineValue = 0.0f;
     private float backgroundValue = 1.0f;
@@ -288,6 +289,10 @@ class LightSensor implements Runnable {
 
     public float getTargetValue() {
         return targetValue;
+    }
+
+    public boolean onLine(){
+        return onLine;
     }
 
     public void run() {
