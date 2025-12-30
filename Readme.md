@@ -15,3 +15,9 @@ Our focus is on combining sensor input, motor control, and smart navigation to c
 - Implement accurate line-following using sensors
 - Design obstacle detection and avoidance logic
 - Ensure seamless re-entry onto the line after detours
+
+
+## Team
+@Mico Jokitalo
+@Samuel Rooke
+@Aapo Eskola
